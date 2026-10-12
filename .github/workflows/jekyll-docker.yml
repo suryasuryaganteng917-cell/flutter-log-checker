@@ -1,0 +1,126 @@
+name: Flutter APK Builder
+on:
+  workflow_dispatch:
+    inputs:
+      build_mode:
+        description: "Jenis APK"
+        required: true
+        type: choice
+        options: [debug, release]
+        default: debug
+      base_color:
+        description: "HEX warna dasar (contoh 1976D2; kosong = tidak mengubah)"
+        required: false
+        type: string
+        default: ""
+      old_domain:
+        description: "Domain lama (opsional)"
+        required: false
+        type: string
+        default: ""
+      new_domain:
+        description: "Domain baru (opsional)"
+        required: false
+        type: string
+        default: ""
+      project_path:
+        description: "Folder project Flutter (kosong jika pubspec.yaml di root)"
+        required: false
+        type: string
+        default: ""
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locate Flutter project
+        id: project
+        shell: bash
+        env:
+          PROJECT_PATH: \${{ inputs.project_path }}
+        run: |
+          set -e
+          if [ -n "$PROJECT_PATH" ]; then PROJECT="$PROJECT_PATH"
+          elif [ -f pubspec.yaml ]; then PROJECT="."
+          else PROJECT="$(find . -name pubspec.yaml -not -path '*/.dart_tool/*' -not -path '*/build/*' -print -quit | xargs -r dirname)"
+          fi
+          if [ -z "$PROJECT" ] || [ ! -f "$PROJECT/pubspec.yaml" ]; then
+            echo "::error::pubspec.yaml tidak ditemukan. Upload source Flutter ke repo atau isi project_path."
+            exit 1
+          fi
+          echo "path=$PROJECT" >> "$GITHUB_OUTPUT"
+      - name: Apply optional color and domain
+        shell: bash
+        env:
+          PROJECT: \${{ steps.project.outputs.path }}
+          BASE_COLOR: \${{ inputs.base_color }}
+          OLD_DOMAIN: \${{ inputs.old_domain }}
+          NEW_DOMAIN: \${{ inputs.new_domain }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib,re
+          root=pathlib.Path(os.environ["PROJECT"])
+          color=os.environ.get("BASE_COLOR","").strip().lstrip("#")
+          old=os.environ.get("OLD_DOMAIN","").strip()
+          new=os.environ.get("NEW_DOMAIN","").strip()
+          if bool(old)!=bool(new): raise SystemExit("Isi domain lama dan baru keduanya, atau kosongkan keduanya.")
+          if color and not re.fullmatch(r"[0-9a-fA-F]{6}([0-9a-fA-F]{2})?",color): raise SystemExit("HEX tidak valid; contoh 1976D2.")
+          allowed={".dart",".yaml",".yml",".xml",".gradle",".kts",".json",".properties",".html",".js",".txt"}
+          changed=[]
+          for p in root.rglob("*"):
+            if not p.is_file() or p.suffix.lower() not in allowed or any(x in p.parts for x in (".git",".dart_tool","build")): continue
+            try: s=p.read_text(encoding="utf-8")
+            except (UnicodeDecodeError,OSError): continue
+            before=s
+            if old and new: s=s.replace(old,new)
+            if color and p.suffix.lower()==".dart":
+              rgb=color[-6:].upper()
+              pat=re.compile(r"((?:final|const|var)\s+(?:Color\s+)?(?:baseColor|primaryColor|primaryPurple|accentPurple|accentColor|seedColor|bgPrimary)\s*=\s*)(?:const\s+)?Color\s*\(\s*0x[0-9a-fA-F]{8}\s*\)|Colors\.[A-Za-z]+")
+              s=pat.sub(lambda m:m.group(1)+"const Color(0xFF"+rgb+")",s)
+            if s!=before: p.write_text(s,encoding="utf-8");changed.append(str(p))
+          print("File berubah:",len(changed))
+          for p in changed[:100]: print(" -",p)
+          print("Warna hanya menyentuh variabel umum yang cocok; cek log untuk detail.")
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Flutter doctor
+        run: flutter doctor -v
+      - name: Get dependencies
+        working-directory: \${{ steps.project.outputs.path }}
+        run: flutter pub get
+      - name: Build debug APK
+        if: \${{ inputs.build_mode == 'debug' }}
+        working-directory: \${{ steps.project.outputs.path }}
+        run: flutter build apk --debug
+      - name: Build release APK
+        if: \${{ inputs.build_mode == 'release' }}
+        working-directory: \${{ steps.project.outputs.path }}
+        run: flutter build apk --release
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-\${{ inputs.build_mode }}-apk
+          path: \${{ steps.project.outputs.path }}/build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish APK to GitHub Releases
+        if: \${{ inputs.build_mode == 'release' }}
+        env:
+          GH_TOKEN: \${{ github.token }}
+          REPO: \${{ github.repository }}
+          RUN_NUMBER: \${{ github.run_number }}
+          PROJECT: \${{ steps.project.outputs.path }}
+        shell: bash
+        run: |
+          TAG="apk-release-\${RUN_NUMBER}"
+          gh release create "$TAG" "$PROJECT"/build/app/outputs/flutter-apk/*.apk --repo "$REPO" --title "Flutter APK Release \${RUN_NUMBER}" --notes "Built by GitHub Actions. See workflow logs for diagnostics."
