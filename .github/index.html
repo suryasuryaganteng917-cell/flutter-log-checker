@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flutter Log Checker</title>
+<style>
+:root{color-scheme:dark;--bg:#080d18;--panel:#111a2b;--line:#263650;--blue:#38bdf8;--text:#edf4ff;--muted:#9eb0ca;--red:#fb7185;--yellow:#fbbf24;--green:#4ade80}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#14213d 0,#080d18 55%);color:var(--text);font:15px system-ui,Arial,sans-serif}
+main{max-width:1050px;margin:auto;padding:24px 16px 60px}.hero{padding:24px;border:1px solid var(--line);border-radius:22px;background:#10192add}
+h1{margin:0 0 8px;font-size:clamp(27px,5vw,42px)}p{color:var(--muted);line-height:1.6}.tag{display:inline-block;color:var(--blue);font-weight:800;letter-spacing:.12em;font-size:12px}
+.card{margin-top:16px;padding:20px;border:1px solid var(--line);border-radius:18px;background:var(--panel)}
+.drop{border:2px dashed #3b5577;border-radius:15px;padding:24px;text-align:center;background:#0b1424}
+button,.btn{background:var(--blue);color:#03111b;font-weight:800;border:0;border-radius:10px;padding:11px 15px;cursor:pointer;display:inline-block}
+button.secondary{background:#243650;color:var(--text)}input[type=file]{max-width:100%;margin:12px 0;color:var(--muted)}
+.small{font-size:12px;color:var(--muted)}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{background:#0a1220;border:1px solid var(--line);padding:13px;border-radius:12px}.stat b{font-size:25px;display:block}
+.issue{padding:13px;margin:10px 0;border:1px solid var(--line);border-left:4px solid var(--yellow);border-radius:10px;background:#0a1220}.issue.error{border-left-color:var(--red)}.issue.info{border-left-color:var(--blue)}
+.issue strong{display:block;margin-bottom:5px}.path{color:var(--blue);font:12px ui-monospace,monospace;overflow-wrap:anywhere}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#050a12;border:1px solid var(--line);border-radius:12px;padding:14px;max-height:450px;overflow:auto;color:#dbeafe}
+.hidden{display:none}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.notice{padding:12px;border-radius:10px;background:#17263b;color:#d8e8ff}.foot{margin-top:20px;text-align:center;font-size:12px;color:var(--muted)}
+@media(max-width:600px){.stats{grid-template-columns:1fr}.hero,.card{padding:16px}}
+</style>
+</head>
+<body><main>
+<section class="hero">
+<span class="tag">S.A TEAM • FLUTTER DIAGNOSTICS</span>
+<h1>Flutter Log Checker</h1>
+<p>Unggah ZIP project Flutter untuk pemeriksaan awal melalui browser. Untuk hasil kompilasi sungguhan, jalankan workflow GitHub Actions yang disertakan di paket ini.</p>
+<div class="notice"><b>Privasi:</b> pemeriksaan ZIP dilakukan di browser. File tidak diunggah ke server oleh halaman ini. Analisis HTML adalah pemeriksaan statis awal, bukan pengganti <code>flutter analyze</code> dan build.</div>
+</section>
+<section class="card">
+<h2>1. Unggah ZIP project</h2>
+<div class="drop" id="drop">
+<b>Pilih ZIP Flutter</b><br><input id="zipFile" type="file" accept=".zip,application/zip">
+<div class="small">Cari ZIP yang berisi pubspec.yaml dan folder lib/.</div>
+<button id="analyzeBtn">Analisis ZIP</button>
+</div>
+<div id="status" class="small" aria-live="polite"></div>
+</section>
+<section id="results" class="card hidden">
+<h2>2. Hasil pemeriksaan awal</h2>
+<div class="stats">
+<div class="stat"><span class="small">File Dart</span><b id="dartCount">0</b></div>
+<div class="stat"><span class="small">Temuan</span><b id="issueCount">0</b></div>
+<div class="stat"><span class="small">File konfigurasi</span><b id="configCount">0</b></div>
+</div>
+<div class="row" style="margin-top:14px"><button class="secondary" id="downloadReport">Unduh laporan TXT</button><button class="secondary" id="showFiles">Lihat daftar file</button></div>
+<div id="issues"></div>
+<div id="fileList" class="hidden"></div>
+</section>
+<section class="card">
+<h2>3. Log asli dari GitHub Actions</h2>
+<p>Setelah workflow selesai, buka tab <b>Actions → Flutter CI → job build → Run flutter analyze / Build release APK</b>. Unduh artifact <code>flutter-diagnostics-logs</code>, lalu buka file <code>flutter-analyze.txt</code> dan <code>flutter-build.txt</code>. Kamu bisa tempel log di bawah untuk membantu mengelompokkan error.</p>
+<textarea id="rawLog" rows="8" style="width:100%;background:#050a12;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px" placeholder="Tempel log flutter analyze/build di sini..."></textarea>
+<div class="row" style="margin-top:10px"><button id="analyzeLog">Analisis log</button><button class="secondary" id="downloadLogReport">Unduh laporan log</button></div>
+<div id="logResult"></div>
+</section>
+<div class="foot">Flutter Log Checker • pemeriksaan statis browser + hasil toolchain dari GitHub Actions</div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script>
+let currentReport = "";
+let currentFiles = [];
+const $ = id => document.getElementById(id);
+function addIssue(list, severity, title, path, detail){
+ list.push({severity,title,path,detail});
+}
+function inspectDart(path, src, issues){
+ const lines=src.split(/\r?\n/);
+ lines.forEach((line,i)=>{
+   if(/<<<<<<<\s|=======\s*$|>>>>>>>\s/.test(line)) addIssue(issues,"error","Marker konflik merge",path+":"+(i+1),"Ada marker konflik Git. Periksa dan selesaikan konflik secara manual.");
+   if(/\bTODO\b|\bFIXME\b/.test(line)) addIssue(issues,"info","Catatan TODO/FIXME",path+":"+(i+1),line.trim().slice(0,220));
+   if(/LateInitializationError|LateInitializationError/.test(line)) addIssue(issues,"info","Referensi LateInitializationError",path+":"+(i+1),"Periksa inisialisasi variabel late dan lifecycle widget.");
+   if(/settings\.arguments\s+as\s+Map<String,\s*dynamic>/.test(line)) addIssue(issues,"info","Cast route arguments tanpa validasi",path+":"+(i+1),"Jika argumen null atau tipenya berbeda, aplikasi dapat crash. Validasi sebelum cast.");
+   if(/\.setState\(/.test(line) && !src.includes("mounted")) addIssue(issues,"info","Periksa lifecycle setState",path+":"+(i+1),"File ini memakai setState tetapi tidak terlihat pemeriksaan mounted. Tinjau callback async; ini bukan bukti error.");
+   if(/https?:\/\/\u200e/.test(line) || /\u200ehttps?:\/\//.test(line)) addIssue(issues,"error","Karakter Unicode di URL",path+":"+(i+1),"URL berisi karakter U+200E. Hapus karakter tersembunyi jika memang tidak disengaja.");
+ });
+ // Common quick checks, deliberately labelled as hints, not compiler findings.
+ const opens=(src.match(/\{/g)||[]).length, closes=(src.match(/\}/g)||[]).length;
+ if(opens!==closes) addIssue(issues,"info","Jumlah kurung kurawal tidak seimbang secara tekstual",path,"Ditemukan { sebanyak "+opens+" dan } sebanyak "+closes+". String/comment dapat memengaruhi hitungan; verifikasi dengan analyzer.");
+ if(/^\s*import\s+['"]package:[^'"]+['"];?/m.test(src)===false && /package:/.test(src)) addIssue(issues,"info","Periksa deklarasi import",path,"Ada referensi package: tetapi pola import sederhana tidak ditemukan. Verifikasi manual.");
+}
+function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function renderIssues(issues){
+ const el=$("issues");
+ if(!issues.length){el.innerHTML='<div class="issue info"><strong>Belum ada temuan heuristik</strong>Ini bukan bukti project bebas error. Jalankan Flutter Analyzer di GitHub Actions.</div>';return;}
+ el.innerHTML=issues.map(x=>'<div class="issue '+(x.severity==="error"?'error':x.severity==="info"?'info':'')+'"><strong>'+escapeHtml(x.title)+'</strong><div class="path">'+escapeHtml(x.path||"")+'</div><div>'+escapeHtml(x.detail)+'</div></div>').join("");
+}
+$("analyzeBtn").addEventListener("click",async()=>{
+ const file=$("zipFile").files[0]; if(!file){$("status").textContent="Pilih file ZIP dulu.";return;}
+ if(!window.JSZip){$("status").textContent="Library ZIP gagal dimuat. Periksa koneksi internet lalu muat ulang.";return;}
+ $("status").textContent="Membaca ZIP di browser...";
+ try{
+  const zip=await JSZip.loadAsync(file), files=[], issues=[];
+  let dart=0, configs=0, foundPub=false;
+  for(const [name,obj] of Object.entries(zip.files)){
+   if(obj.dir) continue;
+   const clean=name.replace(/^.*?(?=(lib\/|pubspec\.yaml|android\/|test\/|\.github\/))/, "");
+   if(/(^|\/)pubspec\.yaml$/.test(name)) foundPub=true;
+   if(/\.dart$/i.test(name)){
+    dart++; const src=await obj.async("string"); inspectDart(name,src,issues); files.push(name);
+   }
+   if(/(^|\/)(pubspec\.yaml|pubspec\.lock|AndroidManifest\.xml|build\.gradle(\.kts)?|settings\.gradle(\.kts)?|gradle-wrapper\.properties|analysis_options\.yaml)$/.test(name)) configs++;
+   if(/(^|\/)local\.properties$/.test(name)) issues.push({severity:"info",title:"Konfigurasi SDK lokal ditemukan",path:name,detail:"File ini dapat berisi path SDK komputer tertentu. Jangan menyalin path lokal secara mentah ke runner/komputer lain."});
+   if(/\.env($|\.)/.test(name)) issues.push({severity:"info",title:"File lingkungan ditemukan",path:name,detail:"Pastikan ZIP tidak membagikan token, password, API key, atau rahasia."});
+  }
+  if(!foundPub) issues.unshift({severity:"error",title:"pubspec.yaml tidak ditemukan di root ZIP",path:"",detail:"ZIP mungkin berisi folder pembungkus. Pastikan project Flutter ada di root atau sesuaikan folder project sebelum menjalankan workflow."});
+  $("dartCount").textContent=dart; $("issueCount").textContent=issues.length; $("configCount").textContent=configs;
+  renderIssues(issues); currentFiles=files;
+  currentReport="Flutter Log Checker — "+file.name+"\nFile Dart: "+dart+"\nFile konfigurasi: "+configs+"\nTemuan heuristik: "+issues.length+"\n\n"+issues.map((x,i)=>(i+1)+". ["+x.severity.toUpperCase()+"] "+x.title+"\nLokasi: "+x.path+"\n"+x.detail).join("\n\n")+"\n\nCATATAN: temuan ini heuristik browser, bukan hasil flutter analyze/build.";
+  $("results").classList.remove("hidden"); $("status").textContent="Selesai membaca ZIP. Pemeriksaan ini tidak mengunggah file.";
+ }catch(e){$("status").textContent="Gagal membaca ZIP: "+e.message;}
+});
+$("downloadReport").addEventListener("click",()=>download("flutter-static-report.txt",currentReport));
+$("showFiles").addEventListener("click",()=>{$("fileList").classList.toggle("hidden");$("fileList").innerHTML="<h3>File Dart ditemukan</h3><pre>"+escapeHtml(currentFiles.join("\n"))+"</pre>";});
+function download(name,txt){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([txt],{type:"text/plain;charset=utf-8"}));a.download=name;a.click();URL.revokeObjectURL(a.href);}
+function classifyLog(log){
+ const lines=log.split(/\r?\n/), out=[];
+ const patterns=[
+  [/Error:|^Error\b|error •|: Error:/i,"error","Error kompilasi/analyzer"],
+  [/Target of URI doesn't exist|Not found:|file not found/i,"error","Import atau file tidak ditemukan"],
+  [/isn't defined|Undefined name|The method .* isn't defined/i,"error","Nama fungsi/variabel tidak dikenal"],
+  [/A value of type .* can't be assigned|type .* is not a subtype|argument_type_not_assignable/i,"error","Ketidakcocokan tipe"],
+  [/Expected .* but found|Expected to find|missing_token|Expected ';'|Expected a declaration/i,"error","Kesalahan sintaks"],
+  [/The getter .* isn't defined|NoSuchMethodError/i,"error","Getter atau pemanggilan tidak valid"],
+  [/deprecated|DeprecationWarning/i,"info","Peringatan deprecated"],
+  [/Execution failed for task|Target kernel_snapshot_program failed/i,"info","Ringkasan kegagalan build (cari error pertama di atasnya)"],
+  [/Gradle.*failed|Could not resolve|Failed to resolve/i,"error","Masalah Gradle/dependency"]
+ ];
+ lines.forEach((line,i)=>{for(const [re,sev,title] of patterns){if(re.test(line)){out.push({severity:sev,title,path:"baris log "+(i+1),detail:line.trim().slice(0,400)});break;}}});
+ return out;
+}
+$("analyzeLog").addEventListener("click",()=>{
+ const log=$("rawLog").value.trim(); if(!log){$("logResult").textContent="Tempel log terlebih dahulu.";return;}
+ const findings=classifyLog(log);
+ $("logResult").innerHTML="<h3>"+findings.length+" baris yang perlu diperhatikan</h3>"+findings.slice(0,100).map(x=>'<div class="issue '+(x.severity==="error"?'error':'info')+'"><strong>'+escapeHtml(x.title)+'</strong><div class="path">'+escapeHtml(x.path)+'</div><pre>'+escapeHtml(x.detail)+'</pre></div>').join("");
+ currentReport="Laporan analisis log\n"+findings.map((x,i)=>(i+1)+". "+x.title+" ("+x.path+")\n"+x.detail).join("\n\n")+"\n\nPengelompokan pola otomatis; periksa konteks log sebelum mengubah kode.";
+});
+$("downloadLogReport").addEventListener("click",()=>download("flutter-log-report.txt",currentReport||"Belum ada laporan."));
+</script></body></html>
