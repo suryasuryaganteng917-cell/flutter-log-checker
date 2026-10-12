@@ -1,90 +1,24 @@
 <!doctype html>
-<html lang="id">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Flutter ZIP Error Checker</title>
+<html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Flutter Builder Center</title>
 <style>
-:root{color-scheme:dark;--bg:#080d18;--panel:#111a2b;--line:#2a3953;--text:#eef4ff;--muted:#a1afc7;--blue:#367dff;--green:#42d6a0;--red:#ff6c80;--yellow:#f6c76b}
-*{box-sizing:border-box}body{margin:0;background:linear-gradient(145deg,#0b1630,#070a12 65%);color:var(--text);font:15px system-ui,Arial,sans-serif}main{max-width:760px;margin:auto;padding:22px 14px 48px}.head{display:flex;align-items:center;gap:12px;margin:8px 0 18px}.logo{background:#16376c;border-radius:14px;width:48px;height:48px;display:grid;place-items:center;font-size:24px}h1{font-size:22px;margin:0}h2{font-size:17px;margin:0 0 10px}.muted{color:var(--muted);font-size:13px;line-height:1.5}.card{background:rgba(17,26,43,.96);border:1px solid var(--line);border-radius:16px;padding:16px;margin:12px 0}.drop{border:1px dashed #5575a6;border-radius:13px;padding:20px 12px;text-align:center;background:#0b1425}.drop input{max-width:100%;margin-top:12px}button{width:100%;padding:12px;border:0;border-radius:11px;background:var(--blue);color:white;font-weight:700;font-size:15px;margin-top:12px}button:disabled{opacity:.5}button.secondary{background:#263650}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#070b13;border:1px solid var(--line);border-radius:10px;padding:12px;max-height:460px;overflow:auto;font-size:12px;line-height:1.55}.status{padding:11px;background:#0a1220;border:1px solid var(--line);border-radius:10px;white-space:pre-wrap;overflow-wrap:anywhere}.good{color:var(--green)}.warn{color:var(--yellow)}.bad{color:var(--red)}.pill{display:inline-block;border:1px solid var(--line);border-radius:20px;padding:4px 9px;font-size:12px;color:var(--muted)}ul{padding-left:20px;line-height:1.6}.bar{height:8px;background:#25324a;border-radius:10px;overflow:hidden;margin-top:10px}.bar span{display:block;height:100%;width:0;background:var(--blue)}a{color:#9fc4ff}
-</style>
-</head>
-<body><main>
-<div class="head"><div class="logo">⌕</div><div><h1>Flutter ZIP Error Checker</h1><div class="muted">HTML saja · pilih ZIP dari HP · analisis dilakukan di browser</div></div></div>
-<div class="card">
-<h2>1. Upload project Flutter</h2>
-<div class="muted">Pilih file ZIP project kamu. ZIP diproses secara lokal di browser dan tidak diunggah ke server oleh halaman ini.</div>
-<div class="drop"><div style="font-size:32px">📦</div><strong>Pilih ZIP project Flutter</strong><br><input id="file" type="file" accept=".zip,application/zip"></div>
-<div id="fileInfo" class="status muted" style="margin-top:10px">Belum ada file dipilih.</div>
-<button id="scan" disabled>Periksa Error</button>
-<div class="bar"><span id="progress"></span></div>
-</div>
-<div class="card">
-<h2>2. Hasil pemeriksaan</h2>
-<div id="summary" class="status muted">Belum ada pemeriksaan.</div>
-<ul id="findings"></ul>
-<div class="muted">Pemeriksaan ini mencari pola masalah umum dan konfigurasi yang hilang. HTML statis tidak dapat menjalankan compiler Flutter, sehingga tidak bisa memastikan semua error build.</div>
-</div>
-<div class="card">
-<h2>3. Detail file & laporan</h2>
-<div id="fileList" class="muted">Daftar file akan muncul di sini.</div>
-<pre id="report">Laporan akan muncul setelah ZIP diperiksa.</pre>
-<button id="download" class="secondary" disabled>Unduh laporan TXT</button>
-</div>
-<div class="muted">Jika butuh error kompilasi yang akurat seperti “Target kernel_snapshot_program failed”, perlu menjalankan Flutter SDK di komputer/server atau CI. HTML saja hanya bisa menganalisis isi source ZIP.</div>
-</main>
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-<script>
-const $=id=>document.getElementById(id);let report='';
-$('file').addEventListener('change',()=>{let f=$('file').files[0];$('scan').disabled=!f;$('fileInfo').textContent=f?`${f.name}\nUkuran: ${(f.size/1024/1024).toFixed(2)} MB`:'Belum ada file dipilih.'});
-function addFinding(arr,level,title,detail){arr.push({level,title,detail})}
-$('scan').onclick=async()=>{
- const f=$('file').files[0];if(!f)return;
- $('scan').disabled=true;$('progress').style.width='10%';$('summary').textContent='Membaca ZIP...';$('findings').innerHTML='';$('fileList').textContent='Memindai...';
- try{
- if(!window.JSZip)throw new Error('Library ZIP gagal dimuat. Periksa koneksi internet lalu refresh halaman.');
- const zip=await JSZip.loadAsync(f);const names=Object.keys(zip.files).filter(n=>!zip.files[n].dir);$('progress').style.width='25%';
- const norm=names.map(n=>n.replace(/\\/g,'/'));const pub=norm.find(n=>/(^|\\/)pubspec\\.yaml$/i.test(n));const dart=norm.filter(n=>n.endsWith('.dart'));const findings=[];
- if(!pub)addFinding(findings,'bad','pubspec.yaml tidak ditemukan','ZIP harus berisi pubspec.yaml. Pastikan kamu memilih source project Flutter, bukan APK atau folder hasil build saja.');
- else addFinding(findings,'good','pubspec.yaml ditemukan',pub);
- if(!norm.some(n=>/(^|\\/)lib\\/main\\.dart$/i.test(n)))addFinding(findings,'warn','lib/main.dart tidak ditemukan','Mungkin struktur ZIP berbeda atau file entry point aplikasi hilang.');
- else addFinding(findings,'good','lib/main.dart ditemukan','Entry point Flutter umum ditemukan.');
- if(!norm.some(n=>/(^|\\/)android\\/app\\/build\\.gradle(\\.kts)?$/i.test(n))&&!norm.some(n=>/(^|\\/)android\\/app\\/build\\.gradle(\\.kts)?$/i.test(n)))addFinding(findings,'warn','Konfigurasi Gradle Android tidak ditemukan','Pastikan folder android/ disertakan jika ingin build APK Android.');
- if(!dart.length)addFinding(findings,'bad','File Dart tidak ditemukan','Tidak ditemukan file .dart dalam ZIP.');
- else addFinding(findings,'good',`${dart.length} file Dart ditemukan`,'Memeriksa source Dart untuk pola kesalahan umum.');
- $('progress').style.width='40%';
- let total=0, findingsByFile=[], suspicious=0, missingSemi=0;
- const readTargets=norm.filter(n=>n.endsWith('.dart')||n.endsWith('pubspec.yaml')||/gradle(\\.kts)?$/.test(n)||n.endsWith('AndroidManifest.xml'));
- for(let i=0;i<readTargets.length;i++){
-  const name=readTargets[i];let text;
-  try{text=await zip.file(name).async('string')}catch{continue}
-  total+=text.length;
-  if(name.endsWith('.dart')){
-   const lines=text.split(/\r?\n/);
-   lines.forEach((line,idx)=>{
-    if(/<<<<<<<|=======|>>>>>>>/.test(line))findingsByFile.push(`${name}:${idx+1}: tanda konflik merge`);
-    if(/TODO\s*:\s*(fix|error|implement)/i.test(line))findingsByFile.push(`${name}:${idx+1}: TODO yang mungkin belum selesai`);
-    if(/LateInitializationError|is not a subtype of type|NoSuchMethodError/.test(line))findingsByFile.push(`${name}:${idx+1}: teks exception runtime ada di source (belum tentu error kompilasi)`);
-    if(/^\s*import\s+['"]package:[^'"]+['"]/.test(line)){let m=line.match(/package:([^/]+)\//);if(m&&pub){/* dependency validation needs pubspec parse */}}
-   });
-   const braces=(text.match(/{/g)||[]).length-(text.match(/}/g)||[]).length;
-   const parens=(text.match(/\(/g)||[]).length-(text.match(/\)/g)||[]).length;
-   const brackets=(text.match(/\[/g)||[]).length-(text.match(/\]/g)||[]).length;
-   if(braces!==0||parens!==0||brackets!==0)findingsByFile.push(`${name}: jumlah kurung pembuka/penutup tidak seimbang (indikasi saja; string/comment dapat memengaruhi hitungan)`);
-  }
-  if(i%5===0)$('progress').style.width=(40+Math.round(45*(i+1)/Math.max(1,readTargets.length)))+'%';
- }
- if(findingsByFile.length){addFinding(findings,'warn',`${findingsByFile.length} indikasi pada source`, 'Lihat daftar detail pada laporan di bawah. Pemeriksaan ini bersifat heuristik.')}
- else addFinding(findings,'good','Tidak ada pola mencurigakan yang terdeteksi','Ini bukan jaminan project bebas error.');
- const errors=findings.filter(x=>x.level==='bad').length,warns=findings.filter(x=>x.level==='warn').length;
- $('summary').innerHTML=`Selesai memeriksa ${names.length} file (${dart.length} Dart).<br><span class="${errors?'bad':warns?'warn':'good'}">${errors} masalah struktur · ${warns} peringatan</span>`;
- $('findings').innerHTML=findings.map(x=>`<li><strong class="${x.level}">${esc(x.title)}</strong><br><span class="muted">${esc(x.detail)}</span></li>`).join('');
- $('fileList').textContent=`Total file: ${names.length}\nFile Dart: ${dart.length}\nUkuran source yang dibaca: ${(total/1024).toFixed(1)} KB\n\nContoh file:\n${norm.slice(0,100).join('\n')}${norm.length>100?'\n...':''}`;
- report=`FLUTTER ZIP ERROR CHECKER\nFile: ${f.name}\nWaktu: ${new Date().toLocaleString()}\n\nRINGKASAN\nTotal file: ${names.length}\nFile Dart: ${dart.length}\nMasalah struktur: ${errors}\nPeringatan: ${warns}\n\nHASIL PEMERIKSAAN\n${findings.map(x=>`[${x.level.toUpperCase()}] ${x.title}\n${x.detail}`).join('\n\n')}\n\nINDIKASI SOURCE\n${findingsByFile.length?findingsByFile.join('\n'):'Tidak ada pola indikasi source yang ditemukan.'}\n\nCATATAN\nPemeriksaan ini hanya analisis statis di browser. Ini bukan flutter analyze atau flutter build; hasilnya tidak dapat memastikan project lolos kompilasi.`;
- $('report').textContent=report;$('download').disabled=false;$('progress').style.width='100%';
- }catch(e){$('summary').textContent='Gagal membaca ZIP: '+e.message;$('summary').className='status bad';$('progress').style.width='0%'}
- finally{$('scan').disabled=false}
-};
-function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-$('download').onclick=()=>{const a=document.createElement('a');const u=URL.createObjectURL(new Blob([report],{type:'text/plain;charset=utf-8'}));a.href=u;a.download='flutter-error-report.txt';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)};
+:root{color-scheme:dark;--bg:#070b12;--p:#101827;--line:#223653;--blue:#2784ff;--cyan:#50d9ff;--txt:#eff6ff;--muted:#8fa4bf}*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top right,#102b50,transparent 45%),#070b12;color:var(--txt);font:15px system-ui,Arial}main{max-width:1000px;margin:auto;padding:20px 14px 50px}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:8px 0 22px}.brand{display:flex;align-items:center;gap:12px}.logo{width:48px;height:48px;border-radius:15px;display:grid;place-items:center;background:linear-gradient(145deg,#2784ff,#12458e);font-size:25px;font-weight:900}h1{font-size:clamp(20px,4vw,29px);margin:0}.muted,.desc{color:var(--muted);font-size:12px}.chip{border:1px solid #24466e;border-radius:25px;padding:7px 11px;color:#a9d7ff;font-size:12px}.hero,.card{border:1px solid var(--line);border-radius:18px;background:linear-gradient(150deg,#111c2d,#0a111c);padding:18px}.hero{background:linear-gradient(115deg,#102647,#0b1220);margin-bottom:15px;padding:22px}.eyebrow{color:var(--cyan);font-weight:800;font-size:11px;letter-spacing:2px}.hero h2{font-size:clamp(25px,5vw,36px);line-height:1.1;margin:8px 0}.hero p{color:#afc1d8;max-width:650px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card h3{margin:0 0 5px;font-size:17px}.desc{margin:0 0 14px}.wide{grid-column:1/-1}.n{color:var(--blue);font-weight:900}.field{display:flex;flex-direction:column;gap:6px;margin:10px 0}.field label{font-size:12px;color:#bdcce0}.field input,.field select{width:100%;min-width:0;border:1px solid #2b405e;background:#070e19;color:var(--txt);border-radius:10px;padding:12px;font:inherit}button,.btn{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:11px;padding:12px 14px;background:var(--blue);color:white;font:inherit;font-weight:800;text-decoration:none;cursor:pointer}.secondary{background:#172740!important;border:1px solid #2a4264!important;color:#d9eaff!important}.full{width:100%}.note{font-size:12px;color:var(--muted);padding:11px;border-radius:10px;background:#080f1a;border:1px solid #1f3048;margin-top:12px;overflow-wrap:anywhere}.links{display:flex;gap:9px;flex-wrap:wrap}.statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stat{padding:11px;border-radius:12px;background:#08111e;border:1px solid #20324a}.stat b{font-size:20px;display:block}.stat span{font-size:11px;color:var(--muted)}.drop{border:1px dashed #3c6594;border-radius:14px;text-align:center;padding:18px;background:#091322}.drop input{max-width:100%;margin-top:10px}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:300px;overflow:auto}footer{text-align:center;color:#61748d;font-size:11px;margin-top:20px}@media(max-width:650px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}}
+</style></head><body><main>
+<header class="top"><div class="brand"><div class="logo">F</div><div><h1>FLUTTER BUILDER</h1><div class="muted">APK CENTER // BUILD • CONFIG • CHECK</div></div></div><span class="chip">● ANDROID WORKSPACE</span></header>
+<section class="hero"><div class="eyebrow">BUILD YOUR PROJECT</div><h2>From source ZIP<br>to APK release.</h2><p>Panel hitam-biru untuk build Debug/Release, konfigurasi warna dan domain, serta cek struktur project. Kompilasi asli dijalankan melalui GitHub Actions.</p><div class="statgrid"><div class="stat"><b>02</b><span>BUILD MODE</span></div><div class="stat"><b>HEX</b><span>COLOR CONFIG</span></div><div class="stat"><b>CI/CD</b><span>ACTIONS</span></div></div></section>
+<div class="grid">
+<section class="card"><h3><span class="n">01</span> Build APK</h3><p class="desc">Mulai build dari GitHub Actions.</p><div class="field"><label>Jenis build</label><select id="mode"><option value="debug">Debug APK — untuk tes</option><option value="release">Release APK — distribusi</option></select></div><a class="btn full" href="https://github.com/suryasuryaganteng917-cell/flutter-log-checker/actions/workflows/flutter-apk.yml" target="_blank" rel="noopener">⚡ Buka Build Workflow</a><div class="note">Di GitHub tekan Run workflow. APK hasil build dapat diunduh dari Artifacts; mode Release juga mencoba membuat GitHub Release.</div></section>
+<section class="card"><h3><span class="n">02</span> Warna dasar</h3><p class="desc">Masukkan HEX warna utama untuk workflow.</p><div class="field"><label>HEX tanpa #</label><input id="color" value="1976D2" maxlength="8"></div><div class="links"><input id="swatch" type="color" value="#1976d2" aria-label="Pilih warna" style="width:52px;height:42px"><span class="muted" id="colorLabel">#1976D2</span><button id="copyColor" class="secondary">Salin HEX</button></div><div class="note">Workflow menyesuaikan variabel warna Dart umum yang cocok; tema custom bisa perlu edit manual.</div></section>
+<section class="card"><h3><span class="n">03</span> Ganti domain / API</h3><p class="desc">Siapkan domain lama dan baru untuk Run workflow.</p><div class="field"><label>Domain lama</label><input id="old" placeholder="https://api-lama.example.com"></div><div class="field"><label>Domain baru</label><input id="new" placeholder="https://api-baru.example.com"></div><button id="copyDomain" class="secondary full">Salin konfigurasi domain</button><div class="note">Jangan masukkan token atau password. Penggantian hanya berlaku pada file teks yang didukung.</div></section>
+<section class="card"><h3><span class="n">04</span> Hasil build</h3><p class="desc">Buka log dan download APK.</p><div class="links"><a class="btn" href="https://github.com/suryasuryaganteng917-cell/flutter-log-checker/actions" target="_blank" rel="noopener">Build Logs</a><a class="btn secondary" href="https://github.com/suryasuryaganteng917-cell/flutter-log-checker/releases" target="_blank" rel="noopener">Releases</a></div><div class="note">Artifacts biasanya tersedia 14 hari. Release bertahan sampai dihapus. APK release perlu signing yang benar untuk distribusi produksi.</div></section>
+<section class="card wide"><h3><span class="n">05</span> Pemeriksa project ZIP</h3><p class="desc">Analisis struktur source secara lokal di browser.</p><div class="drop">📦<br><b>Pilih ZIP project Flutter</b><br><input id="zip" type="file" accept=".zip,application/zip"><div id="zstatus" class="muted">Belum ada file dipilih.</div></div><div class="links" style="margin-top:10px"><button id="scan">Periksa ZIP</button><button id="download" class="secondary" disabled>Unduh laporan TXT</button></div><pre id="report" class="note">Laporan belum dibuat.</pre><div class="note">Pemeriksaan statis bukan compiler Flutter; jalankan build untuk memastikan APK benar-benar berhasil.</div></section>
+<section class="card wide"><h3><span class="n">06</span> Repository shortcuts</h3><div class="links"><a class="btn secondary" href="https://github.com/suryasuryaganteng917-cell/flutter-log-checker" target="_blank" rel="noopener">Repository</a><a class="btn secondary" href="https://github.com/suryasuryaganteng917-cell/flutter-log-checker/settings/pages" target="_blank" rel="noopener">Pages Settings</a><a class="btn secondary" href="https://github.com/suryasuryaganteng917-cell/flutter-log-checker/actions" target="_blank" rel="noopener">Actions</a></div></section></div><footer>FLUTTER BUILDER CENTER • DARK / BLUE UI</footer></main>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script><script>
+const $=x=>document.getElementById(x);let report='';
+$('color').oninput=()=>{let c=$('color').value.replace(/^#/,'');if(/^[0-9a-fA-F]{6}$/.test(c)){$('swatch').value='#'+c;$('colorLabel').textContent='#'+c.toUpperCase()}};
+$('swatch').oninput=()=>{$('color').value=$('swatch').value.slice(1).toUpperCase();$('colorLabel').textContent=$('swatch').value.toUpperCase()};
+$('copyColor').onclick=async()=>{let c=$('color').value.trim().replace(/^#/,'');if(!/^[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(c)){alert('HEX harus 6 atau 8 digit');return}try{await navigator.clipboard.writeText(c.toUpperCase());alert('HEX disalin: '+c.toUpperCase())}catch(e){alert('Kode HEX: '+c.toUpperCase())}};
+$('copyDomain').onclick=async()=>{let a=$('old').value.trim(),b=$('new').value.trim();if(!a||!b){alert('Isi domain lama dan baru');return}let t='Domain lama: '+a+'\nDomain baru: '+b;try{await navigator.clipboard.writeText(t);alert('Konfigurasi disalin. Masukkan di Run workflow GitHub Actions.')}catch(e){alert(t)}};
+$('zip').onchange=()=>{$('zstatus').textContent=$('zip').files[0]?.name||'Belum ada file dipilih.'};
+$('scan').onclick=async()=>{let f=$('zip').files[0];if(!f){alert('Pilih ZIP dahulu');return}try{if(!window.JSZip)throw Error('JSZip gagal dimuat; periksa internet');let z=await JSZip.loadAsync(f),n=Object.keys(z.files).filter(x=>!z.files[x].dir).map(x=>x.replace(/\\/g,'/')),p=n.find(x=>/(^|\/)pubspec\.yaml$/i.test(x)),m=n.find(x=>/(^|\/)lib\/main\.dart$/i.test(x)),d=n.filter(x=>x.endsWith('.dart'));let a=['FLUTTER ZIP CHECK','File: '+f.name,'Jumlah file: '+n.length,'File Dart: '+d.length,'pubspec.yaml: '+(p||'TIDAK DITEMUKAN'),'lib/main.dart: '+(m||'TIDAK DITEMUKAN'),''];a.push(p?'[OK] pubspec ditemukan':'[ERROR] pubspec.yaml tidak ditemukan');a.push(m?'[OK] lib/main.dart ditemukan':'[PERINGATAN] lib/main.dart tidak ditemukan');if(!n.some(x=>/(^|\/)android\/app\/build\.gradle(\.kts)?$/i.test(x)))a.push('[PERINGATAN] konfigurasi Gradle Android tidak ditemukan');report=a.join('\n')+'\n\nCatatan: pemeriksaan struktur statis, bukan flutter analyze/build.';$('report').textContent=report;$('download').disabled=false}catch(e){$('report').textContent='Gagal membaca ZIP: '+e.message}};
+$('download').onclick=()=>{let a=document.createElement('a'),u=URL.createObjectURL(new Blob([report],{type:'text/plain;charset=utf-8'}));a.href=u;a.download='flutter-project-report.txt';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)};
 </script></body></html>
