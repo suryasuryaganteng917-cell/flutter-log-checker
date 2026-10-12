@@ -1,0 +1,48 @@
+
+name: Flutter CI Diagnostics
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Prepare log folder
+        run: mkdir -p logs
+
+      - name: Flutter diagnostics
+        shell: bash
+        run: |
+          set +e
+          cd project || exit 1
+
+          flutter --version > ../logs/flutter-summary.txt 2>&1
+          flutter doctor -v >> ../logs/flutter-summary.txt 2>&1
+          flutter pub get > ../logs/flutter-pub-get.txt 2>&1
+          echo "pub get exit code: $?" >> ../logs/flutter-summary.txt
+
+          flutter analyze --no-pub > ../logs/flutter-analyze.txt 2>&1
+          echo "analyze exit code: $?" >> ../logs/flutter-summary.txt
+
+          set -o pipefail
+          flutter build apk --release --no-pub 2>&1 \
+            | tee ../logs/flutter-build.txt
+          echo "build exit code: ${PIPESTATUS[0]}" \
+            >> ../logs/flutter-summary.txt
+
+      - name: Upload diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-diagnostics-logs
+          path: logs/
+          if-no-files-found: warn
